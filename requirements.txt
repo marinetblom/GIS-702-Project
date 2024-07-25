@@ -4,3 +4,9 @@ matplotlib
 seaborn
 scikit-learn
 jupyter
+missingno
+statsmodels
+pip
+concurrent
+itertools
+scipy
