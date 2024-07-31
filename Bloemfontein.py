@@ -9,8 +9,6 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-import missingno as msno
 
 # STEP 1: LOAD AND INSPECT THE DATA
 # Load the file with the correct delimiter and parse the "Date" column as datetime
@@ -160,6 +158,8 @@ def identify_annual_max_rainfall(df):
     print("Annual Maximum Rainfall Events:\n", annual_max_rainfall)
 
 
+identify_annual_max_rainfall(filtered_df)
+
 # Identify annual maximum rainfall
 identify_annual_max_rainfall(filtered_df)
 annual_max_rainfall = filtered_df.loc[
@@ -198,8 +198,6 @@ thresholds = {
 
 
 ################################################################
-
-
 # Define a function to perform thunderstorm checks
 def run_thunderstorm_checks(df, row, thresholds):
     results = {}
@@ -267,6 +265,7 @@ print(all_checks_df)
 
 ################################################################
 
+# SPIKE DETECTION
 
 filtered_df["DateT"] = pd.to_datetime(filtered_df["DateT"])
 filtered_df.set_index("DateT", inplace=True)
@@ -314,35 +313,46 @@ print("Updated Thunderstorm Checks DataFrame:")
 print(all_checks_df)
 
 
-# Plot the wind data for specific timestamp function
-def plot_wind_data_around_event(df, timestamp, window):
+# PLOT DATA
+
+
+# Plot all relevant parameters around a given timestamp
+def plot_all_parameters_around_event(df, timestamp, window):
     # Define the time range around the timestamp
     time_range = pd.Timedelta(window)
     start_time = timestamp - time_range
     end_time = timestamp + time_range
 
     # Filter data around the timestamp
-    plot_data = df.loc[start_time:end_time, ["Speed", "Gust"]]
+    plot_data = df.loc[
+        start_time:end_time, ["Speed", "Gust", "Temperature", "Humidity"]
+    ]
 
     # Create the plot
-    plt.figure(figsize=(12, 6))
-    plt.plot(
-        plot_data.index,
-        plot_data["Speed"],
-        label="Wind Speed (m/s)",
-        marker="o",
-        linestyle="-",
-    )
-    plt.plot(
-        plot_data.index,
-        plot_data["Gust"],
-        label="Wind Gust (m/s)",
-        marker="o",
-        linestyle="--",
-    )
-    plt.title(f"Wind Speed and Gust Data Around {timestamp}")
+    plt.figure(figsize=(14, 8))
+
+    # Define colors for each parameter
+    colors = {
+        "Speed": "blue",
+        "Gust": "green",
+        "Temperature": "red",
+        "Humidity": "orange",
+    }
+
+    # Plot each parameter with a different color
+    for param, color in colors.items():
+        plt.plot(
+            plot_data.index,
+            plot_data[param],
+            label=f"{param} ({'m/s' if param in ['Speed', 'Gust'] else '°C' if param == 'Temperature' else '%' if param == 'Humidity' else 'hPa' if param == 'Pressure' else '°'})",
+            color=color,
+            marker="o",
+            linestyle="-",
+        )
+
+    plt.title(f"Weather Parameters Around {timestamp}")
     plt.xlabel("Time")
-    plt.ylabel("Wind Speed/Gust (m/s)")
+    plt.ylabel("Values")
     plt.legend()
     plt.grid(True)
     plt.xticks(rotation=45)
@@ -350,9 +360,9 @@ def plot_wind_data_around_event(df, timestamp, window):
     plt.show()
 
 
-# Example usage: Change the timestamp for specific use
-plot_wind_data_around_event(
-    filtered_df, pd.Timestamp("2015-03-18 13:45:00"), window="60T"
+# Example usage for plotting all parameters
+plot_all_parameters_around_event(
+    filtered_df, pd.Timestamp("2012-12-25 09:25:00"), window="60T"
 )
 
 

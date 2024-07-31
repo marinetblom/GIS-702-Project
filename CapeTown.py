@@ -168,7 +168,7 @@ def check_temporal_quality(df):
 check_temporal_quality(visualization_df)
 
 
-# Thunderstorm detection process
+# Storm detection process
 # STEP 1: IDENTIFY ANNUAL MAX RAINFALL
 print(filtered_df.head())
 
@@ -179,11 +179,32 @@ def identify_annual_max_rainfall(df):
     print("Annual Maximum Rainfall Events:\n", annual_max_rainfall)
 
 
+identify_annual_max_rainfall(filtered_df)
+
 # Identify annual maximum rainfall
 identify_annual_max_rainfall(filtered_df)
 annual_max_rainfall = filtered_df.loc[
     filtered_df.groupby(filtered_df["DateT"].dt.year)["Rain"].idxmax()
 ]
+
+
+def plot_annual_max_rainfall(df):
+    # Extract the year from the 'DateT' column
+    df["Year"] = df["DateT"].dt.year
+
+    # Plot the annual maximum rainfall
+    plt.figure(figsize=(12, 6))
+    plt.bar(df["Year"], df["Rain"], color="skyblue")
+    plt.title("Annual Maximum Rainfall (5-min interval)")
+    plt.xlabel("Year")
+    plt.ylabel("Maximum Rainfall (mm)")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+
+# Plot the annual maximum rainfall
+plot_annual_max_rainfall(annual_max_rainfall)
 
 
 # Define thresholds for thunderstorm checks with lowercase keys
@@ -198,8 +219,6 @@ thresholds = {
 
 
 ################################################################
-
-
 # Define a function to perform thunderstorm checks
 def run_thunderstorm_checks(df, row, thresholds):
     results = {}
@@ -268,80 +287,196 @@ print(all_checks_df)
 ################################################################
 
 
+# Define thresholds for frontal rain checks with lowercase keys
+frontal_rain_thresholds = {
+    "Humidity": 90,  # % absolute threshold or rising to within an hour
+    "Humidity_min": 80,  # % minimum
+    "Temperature": 2,  # °C decrease
+    "Speed": 1,  # m/s decrease
+    "WindDir": 30,  # degrees change
+    "Pressure": 1,  # Any positive hPa increase
+    "Gust": 1,  # m/s decrease
+}
+
+
+# Define the frontal rain check function
+def run_frontal_rain_checks(df, row, thresholds):
+    results = {}
+    results["Date"] = row["DateT"]  # Using DateT from filtered_df
+    results["Rain"] = row["Rain"]
+
+    timestamp = row["DateT"]
+    thirty_min_before = timestamp - pd.Timedelta(minutes=30)
+    thirty_min_after = timestamp + pd.Timedelta(minutes=30)
+    six_hours_after = timestamp + pd.Timedelta(hours=6)
+
+    # Initialize all checks as False
+    results.update(
+        {
+            "F_WindSpeed_Check": False,
+            "F_Gust_Check": False,
+            "F_Temperature_Check": False,
+            "F_Humidity_Check": False,
+            "F_WindDir_Check": False,
+            "F_Pressure_Check": False,
+        }
+    )
+
+    # Fetch corresponding rows from the filtered DataFrame
+    before_row = df[df["DateT"] == thirty_min_before]
+    after_row = df[df["DateT"] == thirty_min_after]
+    six_hours_row = df[df["DateT"] == six_hours_after]
+
+    # Initialize one_hour_row in case it's not defined later
+    one_hour_row = pd.DataFrame()
+
+    if not before_row.empty and not after_row.empty:
+        before_row = before_row.iloc[0]
+        after_row = after_row.iloc[0]
+
+        # Wind Speed and Gust Decrease 30 minutes after the event
+        if (row["Speed"] - after_row["Speed"]) >= thresholds["Speed"]:
+            results["F_WindSpeed_Check"] = True
+
+        if (row["Gust"] - after_row["Gust"]) >= thresholds["Gust"]:
+            results["F_Gust_Check"] = True
+
+        # Temperature Decrease 30 minutes after the event
+        if (row["Temperature"] - after_row["Temperature"]) >= thresholds["Temperature"]:
+            results["F_Temperature_Check"] = True
+
+        # Humidity Check
+        if row["Humidity"] >= thresholds["Humidity"]:
+            results["F_Humidity_Check"] = True
+        else:
+            # Check if humidity rises from above 80% to at least 90% within an hour after the event
+            one_hour_after = timestamp + pd.Timedelta(hours=1)
+            one_hour_row = df[df["DateT"] == one_hour_after]
+
+        if not one_hour_row.empty:
+            one_hour_row = one_hour_row.iloc[0]
+            if (
+                row["Humidity"] > thresholds["Humidity_min"]
+                and one_hour_row["Humidity"] >= thresholds["Humidity"]
+            ):
+                results["F_Humidity_Check"] = True
+
+        # Normalize wind direction for wrap-around (add 360 to directions < 90)
+        def normalize_wind_dir(wind_dir):
+            if wind_dir < 90:
+                return wind_dir + 360
+            return wind_dir
+
+        # Wind Direction Change: Check for a decrease within a broader time window
+        time_points = [
+            pd.Timedelta(minutes=10),
+            pd.Timedelta(minutes=20),
+            pd.Timedelta(minutes=30),
+        ]
+        initial_wind_dir = normalize_wind_dir(row["WindDir"])
+        wind_dir_decrease = False
+
+        for time_point in time_points:
+            check_time = timestamp + time_point
+            check_row = df[df["DateT"] == check_time]
+
+            if not check_row.empty:
+                check_wind_dir = normalize_wind_dir(check_row.iloc[0]["WindDir"])
+                if initial_wind_dir > check_wind_dir:
+                    wind_dir_decrease = True
+                    break  # Exit loop as soon as a decrease is found
+
+        # Mark the check as passed if a decrease was detected
+        if wind_dir_decrease:
+            results["F_WindDir_Check"] = True
+
+        # Surface Pressure Increase
+        if not six_hours_row.empty:
+            six_hours_row = six_hours_row.iloc[0]
+            if six_hours_row["Pressure"] > row["Pressure"]:
+                results["F_Pressure_Check"] = True
+
+    # Determine if it meets frontal rain criteria
+    results["FrontalRain"] = (
+        int(results["F_WindSpeed_Check"])
+        + int(results["F_Gust_Check"])
+        + int(results["F_Temperature_Check"])
+        + int(results["F_Humidity_Check"])
+        + int(results["F_WindDir_Check"])
+        + int(results["F_Pressure_Check"])
+    ) >= 4
+
+    return results
+
+
+# Application of the Function
+frontal_rain_results = []
+
+# Iterate over rows where Thunderstorm is False
+for _, row in all_checks_df[all_checks_df["Thunderstorm"] == False].iterrows():
+    corresponding_row = filtered_df[filtered_df["DateT"] == row["Date"]]
+
+    # Only proceed if a corresponding row is found
+    if not corresponding_row.empty:
+        corresponding_row = corresponding_row.iloc[0]
+
+        # Perform the frontal rain check using data from filtered_df
+        frontal_rain_results.append(
+            run_frontal_rain_checks(
+                filtered_df, corresponding_row, frontal_rain_thresholds
+            )
+        )
+
+# Convert the list of results into a DataFrame
+frontal_rain_checks_df = pd.DataFrame(frontal_rain_results)
+
+print(frontal_rain_checks_df)
+
+
+################################################################
+
+
 filtered_df["DateT"] = pd.to_datetime(filtered_df["DateT"])
 filtered_df.set_index("DateT", inplace=True)
 
 
-# Function to detect spikes
-def detect_spikes(df, time_index, pre_window="15min", spike_threshold=5):
-    rolling_max_pre = (
-        df[["Speed", "Gust"]].rolling(window=pre_window, closed="left").max()
-    )
-    pre_max_values = rolling_max_pre.loc[time_index]
-
-    one_hour_before = df.loc[time_index - pd.Timedelta(hours=1)]
-
-    print(f"At {time_index} - 15min window max: {pre_max_values}")
-    print(
-        f"At {time_index - pd.Timedelta(hours=1)} - One hour before values: {one_hour_before}"
-    )
-
-    speed_spike = (pre_max_values["Speed"] - one_hour_before["Speed"]) > spike_threshold
-    gust_spike = (pre_max_values["Gust"] - one_hour_before["Gust"]) > spike_threshold
-
-    return speed_spike, gust_spike
+# PLOT DATA
 
 
-# Detect spikes and update checks
-for index, row in all_checks_df.iterrows():
-    if not row["Thunderstorm"]:
-        time_index = row["Date"]
-        speed_spike, gust_spike = detect_spikes(filtered_df, time_index)
-        if speed_spike:
-            all_checks_df.at[index, "Speed_Check"] = True
-        if gust_spike:
-            all_checks_df.at[index, "Gust_Check"] = True
-        all_checks_df.at[index, "Thunderstorm"] = (
-            int(all_checks_df.at[index, "Humidity_Check"])
-            + int(all_checks_df.at[index, "Temperature_Check"])
-            + int(all_checks_df.at[index, "Speed_Check"])
-            + int(all_checks_df.at[index, "WindDir_Check"])
-            + int(all_checks_df.at[index, "Pressure_Check"])
-            + int(all_checks_df.at[index, "Gust_Check"])
-        ) >= 4
-
-print("Updated Thunderstorm Checks DataFrame:")
-print(all_checks_df)
-
-
-def plot_wind_data_around_event(df, timestamp, window):
+# Plot all relevant parameters around a given timestamp
+def plot_all_parameters_around_event(df, timestamp, window):
     # Define the time range around the timestamp
     time_range = pd.Timedelta(window)
     start_time = timestamp - time_range
     end_time = timestamp + time_range
 
     # Filter data around the timestamp
-    plot_data = df.loc[start_time:end_time, ["Speed", "Gust"]]
+    plot_data = df.loc[start_time:end_time, ["Speed", "Gust", "Temperature"]]
 
     # Create the plot
-    plt.figure(figsize=(12, 6))
-    plt.plot(
-        plot_data.index,
-        plot_data["Speed"],
-        label="Wind Speed (m/s)",
-        marker="o",
-        linestyle="-",
-    )
-    plt.plot(
-        plot_data.index,
-        plot_data["Gust"],
-        label="Wind Gust (m/s)",
-        marker="o",
-        linestyle="--",
-    )
-    plt.title(f"Wind Speed and Gust Data Around {timestamp}")
+    plt.figure(figsize=(14, 8))
+
+    # Define colors for each parameter
+    colors = {
+        "Speed": "blue",
+        "Gust": "green",
+        "Temperature": "red",
+    }
+
+    # Plot each parameter with a different color
+    for param, color in colors.items():
+        plt.plot(
+            plot_data.index,
+            plot_data[param],
+            label=f"{param} ({'m/s' if param in ['Speed', 'Gust'] else '°C' if param == 'Temperature' else '%' if param == 'Humidity' else 'hPa' if param == 'Pressure' else '°'})",
+            color=color,
+            marker="o",
+            linestyle="-",
+        )
+
+    plt.title(f"Weather Parameters Around {timestamp}")
     plt.xlabel("Time")
-    plt.ylabel("Wind Speed/Gust (m/s)")
+    plt.ylabel("Values")
     plt.legend()
     plt.grid(True)
     plt.xticks(rotation=45)
@@ -349,40 +484,13 @@ def plot_wind_data_around_event(df, timestamp, window):
     plt.show()
 
 
-# Example usage
-plot_wind_data_around_event(
-    filtered_df, pd.Timestamp("2014-02-21 16:20:00"), window="60T"
+# Example usage for plotting all parameters
+plot_all_parameters_around_event(
+    filtered_df, pd.Timestamp("1995-10-12 00:10:00"), window="60T"
 )
 
 
-def calculate_differences(df, annual_max_rainfall):
-    difference_results = []
-    for _, row in annual_max_rainfall.iterrows():
-        timestamp = row["DateT"]
-        one_hour_back = timestamp - pd.Timedelta(hours=1)
-        if one_hour_back in df.index:
-            prev_row = df.loc[one_hour_back]
-            differences = {
-                "humidity_diff": row["Humidity"] - prev_row["Humidity"],
-                "temperature_diff": row["Temperature"] - prev_row["Temperature"],
-                "speed_diff": row["Speed"] - prev_row["Speed"],
-                "winddir_diff": abs(row["WindDir"] - prev_row["WindDir"]),
-                "pressure_diff": row["Pressure"] - prev_row["Pressure"],
-                "gust_diff": row["Gust"] - prev_row["Gust"],
-            }
-            difference_results.append(differences)
-    return pd.DataFrame(difference_results)
-
-
-# Calculate the differences
-differences_df = calculate_differences(filtered_df, annual_max_rainfall)
-
-# Display summary statistics of the differences
-summary_statistics = differences_df.describe()
-print(summary_statistics)
-
-
-# Function for manual verification
+# Manual Verification
 def manual_verification(df, specific_timestamp):
     specific_row = df.loc[specific_timestamp]
     preceding_hour_timestamp = specific_timestamp - pd.Timedelta(hours=1)
