@@ -41,7 +41,7 @@ CT["Pressure"] = CT["Pressure"].apply(clean_pressure)
 # Explicitly change the dtype to float64 after cleaning
 CT["Pressure"] = CT["Pressure"].astype("float64")
 
-
+# Check if the pressure column is correct
 print(CT.head())
 print(CT.dtypes)
 
@@ -54,6 +54,8 @@ filtered_CT = CT[
 # Reset the index to start from 0
 filtered_CT.reset_index(drop=True, inplace=True)
 print(filtered_CT.head(10))
+
+# Load in dataframe
 
 filtered_df = filtered_CT.copy()
 
@@ -179,10 +181,8 @@ def identify_annual_max_rainfall(df):
     print("Annual Maximum Rainfall Events:\n", annual_max_rainfall)
 
 
-identify_annual_max_rainfall(filtered_df)
-
 # Identify annual maximum rainfall
-identify_annual_max_rainfall(filtered_df)
+annual_max_rainfall = identify_annual_max_rainfall(filtered_df)
 annual_max_rainfall = filtered_df.loc[
     filtered_df.groupby(filtered_df["DateT"].dt.year)["Rain"].idxmax()
 ]
@@ -281,7 +281,7 @@ for _, row in annual_max_rainfall.iterrows():
 
 all_checks_df = pd.DataFrame(check_results)
 
-print("Thunderstorm Checks DataFrame:")
+print("Storm Checks DataFrame:")
 print(all_checks_df)
 
 ################################################################
@@ -291,7 +291,7 @@ print(all_checks_df)
 frontal_rain_thresholds = {
     "Humidity": 90,  # % absolute threshold or rising to within an hour
     "Humidity_min": 80,  # % minimum
-    "Temperature": 2,  # °C decrease
+    "Temperature": 1,  # °C decrease
     "Speed": 1,  # m/s decrease
     "WindDir": 30,  # degrees change
     "Pressure": 1,  # Any positive hPa increase
@@ -308,6 +308,7 @@ def run_frontal_rain_checks(df, row, thresholds):
     timestamp = row["DateT"]
     thirty_min_before = timestamp - pd.Timedelta(minutes=30)
     thirty_min_after = timestamp + pd.Timedelta(minutes=30)
+
     six_hours_after = timestamp + pd.Timedelta(hours=6)
 
     # Initialize all checks as False
@@ -325,6 +326,7 @@ def run_frontal_rain_checks(df, row, thresholds):
     # Fetch corresponding rows from the filtered DataFrame
     before_row = df[df["DateT"] == thirty_min_before]
     after_row = df[df["DateT"] == thirty_min_after]
+
     six_hours_row = df[df["DateT"] == six_hours_after]
 
     # Initialize one_hour_row in case it's not defined later
@@ -341,8 +343,10 @@ def run_frontal_rain_checks(df, row, thresholds):
         if (row["Gust"] - after_row["Gust"]) >= thresholds["Gust"]:
             results["F_Gust_Check"] = True
 
-        # Temperature Decrease 30 minutes after the event
-        if (row["Temperature"] - after_row["Temperature"]) >= thresholds["Temperature"]:
+        # Temperature Decrease: Compare 30 minutes before the event with 30 minutes after the event
+        if (before_row["Temperature"] - after_row["Temperature"]) >= thresholds[
+            "Temperature"
+        ]:
             results["F_Temperature_Check"] = True
 
         # Humidity Check
@@ -430,6 +434,7 @@ for _, row in all_checks_df[all_checks_df["Thunderstorm"] == False].iterrows():
 # Convert the list of results into a DataFrame
 frontal_rain_checks_df = pd.DataFrame(frontal_rain_results)
 
+print("Frontal rain Checks DataFrame:")
 print(frontal_rain_checks_df)
 
 
@@ -486,7 +491,7 @@ def plot_all_parameters_around_event(df, timestamp, window):
 
 # Example usage for plotting all parameters
 plot_all_parameters_around_event(
-    filtered_df, pd.Timestamp("1995-10-12 00:10:00"), window="60T"
+    filtered_df, pd.Timestamp("2023-08-25 11:25:00"), window="60T"
 )
 
 
@@ -504,5 +509,5 @@ def manual_verification(df, specific_timestamp):
 
 
 # Manual verification
-specific_timestamp = pd.Timestamp("2005-01-17 22:40:00")
+specific_timestamp = pd.Timestamp("1998-07-06 18:40:00")
 manual_verification(filtered_df, specific_timestamp)
