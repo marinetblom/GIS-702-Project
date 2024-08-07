@@ -292,10 +292,10 @@ frontal_rain_thresholds = {
     "Humidity": 90,  # % absolute threshold or rising to within an hour
     "Humidity_min": 80,  # % minimum
     "Temperature": 1,  # °C decrease
-    "Speed": 1,  # m/s decrease
+    "Speed": 3,  # m/s decrease
     "WindDir": 30,  # degrees change
     "Pressure": 1,  # Any positive hPa increase
-    "Gust": 1,  # m/s decrease
+    "Gust": 3,  # m/s decrease
 }
 
 
@@ -306,8 +306,9 @@ def run_frontal_rain_checks(df, row, thresholds):
     results["Rain"] = row["Rain"]
 
     timestamp = row["DateT"]
-    thirty_min_before = timestamp - pd.Timedelta(minutes=30)
-    thirty_min_after = timestamp + pd.Timedelta(minutes=30)
+    one_hour_before = timestamp - pd.Timedelta(hours=1)
+    one_hour_after = timestamp + pd.Timedelta(hours=1)
+    six_hours_after = timestamp + pd.Timedelta(hours=6)
 
     six_hours_after = timestamp + pd.Timedelta(hours=6)
 
@@ -324,9 +325,8 @@ def run_frontal_rain_checks(df, row, thresholds):
     )
 
     # Fetch corresponding rows from the filtered DataFrame
-    before_row = df[df["DateT"] == thirty_min_before]
-    after_row = df[df["DateT"] == thirty_min_after]
-
+    before_row = df[df["DateT"] == one_hour_before]
+    after_row = df[df["DateT"] == one_hour_after]
     six_hours_row = df[df["DateT"] == six_hours_after]
 
     # Initialize one_hour_row in case it's not defined later
@@ -336,15 +336,16 @@ def run_frontal_rain_checks(df, row, thresholds):
         before_row = before_row.iloc[0]
         after_row = after_row.iloc[0]
 
-        # Wind Speed and Gust Decrease 30 minutes after the event
-        if (row["Speed"] - after_row["Speed"]) >= thresholds["Speed"]:
+        # Wind Speed Decrease: Compare one hour before the event with one hour after the event
+        if (before_row["Speed"] - after_row["Speed"]) >= thresholds["Speed"]:
             results["F_WindSpeed_Check"] = True
 
-        if (row["Gust"] - after_row["Gust"]) >= thresholds["Gust"]:
+        # Wind Gust Decrease: Compare one hour before the event with one hour after the event
+        if (before_row["Gust"] - after_row["Gust"]) >= thresholds["Gust"]:
             results["F_Gust_Check"] = True
 
-        # Temperature Decrease: Compare 30 minutes before the event with 30 minutes after the event
-        if (before_row["Temperature"] - after_row["Temperature"]) >= thresholds[
+        # Temperature Decrease: Compare one hour before the event with one hour after the event
+        if (before_row["Temperature"] - row["Temperature"]) >= thresholds[
             "Temperature"
         ]:
             results["F_Temperature_Check"] = True
@@ -371,27 +372,11 @@ def run_frontal_rain_checks(df, row, thresholds):
                 return wind_dir + 360
             return wind_dir
 
-        # Wind Direction Change: Check for a decrease within a broader time window
-        time_points = [
-            pd.Timedelta(minutes=10),
-            pd.Timedelta(minutes=20),
-            pd.Timedelta(minutes=30),
-        ]
-        initial_wind_dir = normalize_wind_dir(row["WindDir"])
-        wind_dir_decrease = False
+        # Wind Direction Change: Compare 30 minutes before the event with the event timestamp
+        initial_wind_dir = normalize_wind_dir(before_row["WindDir"])
+        event_wind_dir = normalize_wind_dir(row["WindDir"])
 
-        for time_point in time_points:
-            check_time = timestamp + time_point
-            check_row = df[df["DateT"] == check_time]
-
-            if not check_row.empty:
-                check_wind_dir = normalize_wind_dir(check_row.iloc[0]["WindDir"])
-                if initial_wind_dir > check_wind_dir:
-                    wind_dir_decrease = True
-                    break  # Exit loop as soon as a decrease is found
-
-        # Mark the check as passed if a decrease was detected
-        if wind_dir_decrease:
+        if (initial_wind_dir - event_wind_dir) >= thresholds["WindDir"]:
             results["F_WindDir_Check"] = True
 
         # Surface Pressure Increase
@@ -441,8 +426,8 @@ print(frontal_rain_checks_df)
 ################################################################
 
 
-filtered_df["DateT"] = pd.to_datetime(filtered_df["DateT"])
-filtered_df.set_index("DateT", inplace=True)
+# filtered_df["DateT"] = pd.to_datetime(filtered_df["DateT"])
+# filtered_df.set_index("DateT", inplace=True)
 
 
 # PLOT DATA
@@ -456,43 +441,84 @@ def plot_all_parameters_around_event(df, timestamp, window):
     end_time = timestamp + time_range
 
     # Filter data around the timestamp
-    plot_data = df.loc[start_time:end_time, ["Speed", "Gust", "Temperature"]]
+    plot_data = df[(df["DateT"] >= start_time) & (df["DateT"] <= end_time)]
 
-    # Create the plot
-    plt.figure(figsize=(14, 8))
+    # Create the figure and axes for multiple subplots
+    fig, axs = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
-    # Define colors for each parameter
-    colors = {
-        "Speed": "blue",
-        "Gust": "green",
-        "Temperature": "red",
-    }
+    # Wind Speed and Gust on the same plot
+    axs[0].plot(
+        plot_data["DateT"],
+        plot_data["Speed"],
+        label="Speed (m/s)",
+        color="blue",
+        marker="o",
+    )
+    axs[0].plot(
+        plot_data["DateT"],
+        plot_data["Gust"],
+        label="Gust (m/s)",
+        color="green",
+        marker="o",
+    )
+    axs[0].set_ylabel("Speed & Gust (m/s)")
+    axs[0].legend()
+    axs[0].grid(True)
+    axs[0].set_title(f"Weather Parameters Around {timestamp}")
 
-    # Plot each parameter with a different color
-    for param, color in colors.items():
-        plt.plot(
-            plot_data.index,
-            plot_data[param],
-            label=f"{param} ({'m/s' if param in ['Speed', 'Gust'] else '°C' if param == 'Temperature' else '%' if param == 'Humidity' else 'hPa' if param == 'Pressure' else '°'})",
-            color=color,
-            marker="o",
-            linestyle="-",
-        )
+    # Temperature on its own plot
+    axs[1].plot(
+        plot_data["DateT"],
+        plot_data["Temperature"],
+        label="Temperature (°C)",
+        color="red",
+        marker="o",
+    )
+    axs[1].set_ylabel("Temperature (°C)")
+    axs[1].legend()
+    axs[1].grid(True)
 
-    plt.title(f"Weather Parameters Around {timestamp}")
-    plt.xlabel("Time")
-    plt.ylabel("Values")
-    plt.legend()
-    plt.grid(True)
+    # Humidity and Wind Direction on their own plot
+    axs[2].plot(
+        plot_data["DateT"],
+        plot_data["Humidity"],
+        label="Humidity (%)",
+        color="orange",
+        marker="o",
+    )
+    axs[2].set_ylabel("Humidity (%)", color="orange")
+    axs[2].legend(loc="upper left")
+    axs[2].grid(True)
+
+    ax2 = axs[
+        2
+    ].twinx()  # Create a twin y-axis to plot wind direction on the same subplot
+    ax2.plot(
+        plot_data["DateT"],
+        plot_data["WindDir"],
+        label="WindDir (°)",
+        color="cyan",
+        marker="o",
+    )
+    ax2.set_ylabel("Wind Direction (°)", color="cyan")
+    ax2.legend(loc="upper right")
+
+    # Set x-axis label and format
+    axs[2].set_xlabel("Time")
     plt.xticks(rotation=45)
+
+    # Adjust layout and show the plot
     plt.tight_layout()
     plt.show()
 
 
-# Example usage for plotting all parameters
-plot_all_parameters_around_event(
-    filtered_df, pd.Timestamp("2023-08-25 11:25:00"), window="60T"
-)
+# Iterate over rows where FrontalRain is False
+for _, row in frontal_rain_checks_df[
+    frontal_rain_checks_df["FrontalRain"] == False
+].iterrows():
+    timestamp = row["Date"]
+    print(f"Plotting for timestamp: {timestamp}")
+    plot_all_parameters_around_event(filtered_df, timestamp, window="60T")
 
 
 # Manual Verification
