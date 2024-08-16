@@ -9,6 +9,8 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
+import missingno as msno
 
 # STEP 1: LOAD AND INSPECT THE DATA
 # Load the file with the correct delimiter and parse the "Date" column as datetime
@@ -37,21 +39,25 @@ print(filtered_bloem.head())
 filtered_df = filtered_bloem.copy()
 
 
-# Summary statistics function
-def summarize_statistics(filtered_df):
+# Summary statistics function with export to CSV
+def summarize_statistics(filtered_df, file_path):
     pd.set_option("display.float_format", lambda x: "%.3f" % x)
-    print(filtered_df.describe())
+    summary = filtered_df.describe()
+    print(summary)
+    summary.to_csv(file_path)
 
 
-# Summarize statistics
-summarize_statistics(filtered_df)
+# Specify the path where you want to save the file
+file_path = r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\SummaryStatsBloem.csv"
+
+# Summarize statistics and export to CSV
+summarize_statistics(filtered_df, file_path)
 
 
+# Create a visualization dataframe
 def prepare_visualization_data(filtered_df):
     # Create a copy for visualizations to ensure the original data stays valid.
     visualization_df = filtered_df.copy()
-    # Extract the date (year, month, day) from the DateT column in the visualization copy
-    visualization_df["Date"] = visualization_df["DateT"].dt.date
     return visualization_df
 
 
@@ -59,6 +65,7 @@ def prepare_visualization_data(filtered_df):
 visualization_df = prepare_visualization_data(filtered_df)
 
 
+# Missing Values
 def check_missing_data(visualization_df):
     # Identify missing values
     missing_values = visualization_df.isnull().sum()
@@ -71,6 +78,10 @@ def check_missing_data(visualization_df):
 
 # Check for missing data
 check_missing_data(visualization_df)
+
+# use missingno library to visualize distribution of missing values
+msno.matrix(visualization_df)
+msno.dendrogram(visualization_df)
 
 
 # Function to check for out-of-order timestamps
@@ -98,16 +109,10 @@ def check_duplicate_timestamps(df):
 check_duplicate_timestamps(visualization_df)
 
 
-# Function to check temporal quality
-def check_temporal_quality(df):
-    # 2.3.1 Temporal consistency
-    if not df.index.is_monotonic_increasing:
-        print("Timestamps are not in chronological order.")
-    else:
-        print("Timestamps are in chronological order.")
+# Accuracy of a time measurement
 
-    # 2.3.2 Accuracy of a time measurement
-    # MISSING TIME STAMPS
+
+def check_temporal_quality(df):
     # Set DateT as the index in the visualization copy
     df.set_index("DateT", inplace=True)
 
@@ -147,24 +152,20 @@ def check_temporal_quality(df):
 check_temporal_quality(visualization_df)
 
 
-# Thunderstorm detection process
+# Storm detection process
 # STEP 1: IDENTIFY ANNUAL MAX RAINFALL
 print(filtered_df.head())
 
 
 # Function to identify annual maximum rainfall
 def identify_annual_max_rainfall(df):
-    annual_max_rainfall = df.loc[df.groupby(df["DateT"].dt.year)["Rain"].idxmax()]
-    print("Annual Maximum Rainfall Events:\n", annual_max_rainfall)
+    # Function to identify annual maximum rainfall
+    return df.loc[df.groupby(df["DateT"].dt.year)["Rain"].idxmax()]
 
 
-identify_annual_max_rainfall(filtered_df)
-
-# Identify annual maximum rainfall
-identify_annual_max_rainfall(filtered_df)
-annual_max_rainfall = filtered_df.loc[
-    filtered_df.groupby(filtered_df["DateT"].dt.year)["Rain"].idxmax()
-]
+# Assign annual maximum rainfall using the function
+annual_max_rainfall = identify_annual_max_rainfall(filtered_df)
+print("Annual Maximum Rainfall Events:\n", annual_max_rainfall)
 
 
 def plot_annual_max_rainfall(df):
@@ -263,6 +264,11 @@ all_checks_df = pd.DataFrame(check_results)
 print("Thunderstorm Checks DataFrame:")
 print(all_checks_df)
 
+# Save data frame to csv
+all_checks_df.to_csv(
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\StormBloem.csv"
+)
+
 ################################################################
 
 # SPIKE DETECTION
@@ -313,29 +319,30 @@ print("Updated Thunderstorm Checks DataFrame:")
 print(all_checks_df)
 
 ################################################################
-# Frontal rain Check
 
+# Frontal rain check
 # Define thresholds for frontal rain checks with lowercase keys
 frontal_rain_thresholds = {
     "Humidity": 90,  # % absolute threshold or rising to within an hour
     "Humidity_min": 80,  # % minimum
     "Temperature": 1,  # °C decrease
-    "Speed": 1,  # m/s decrease
+    "Speed": 3,  # m/s decrease
     "WindDir": 30,  # degrees change
     "Pressure": 1,  # Any positive hPa increase
-    "Gust": 1,  # m/s decrease
+    "Gust": 3,  # m/s decrease
 }
 
 
 # Define the frontal rain check function
 def run_frontal_rain_checks(df, row, thresholds):
     results = {}
-    results["Date"] = row["DateT"]
+    results["Date"] = row["DateT"]  # Using DateT from filtered_df
     results["Rain"] = row["Rain"]
 
     timestamp = row["DateT"]
-    thirty_min_before = timestamp - pd.Timedelta(minutes=30)
-    thirty_min_after = timestamp + pd.Timedelta(minutes=30)
+    one_hour_before = timestamp - pd.Timedelta(hours=1)
+    one_hour_after = timestamp + pd.Timedelta(hours=1)
+    six_hours_after = timestamp + pd.Timedelta(hours=6)
 
     six_hours_after = timestamp + pd.Timedelta(hours=6)
 
@@ -352,9 +359,8 @@ def run_frontal_rain_checks(df, row, thresholds):
     )
 
     # Fetch corresponding rows from the filtered DataFrame
-    before_row = df[df["DateT"] == thirty_min_before]
-    after_row = df[df["DateT"] == thirty_min_after]
-
+    before_row = df[df["DateT"] == one_hour_before]
+    after_row = df[df["DateT"] == one_hour_after]
     six_hours_row = df[df["DateT"] == six_hours_after]
 
     # Initialize one_hour_row in case it's not defined later
@@ -364,15 +370,16 @@ def run_frontal_rain_checks(df, row, thresholds):
         before_row = before_row.iloc[0]
         after_row = after_row.iloc[0]
 
-        # Wind Speed and Gust Decrease 30 minutes after the event
-        if (row["Speed"] - after_row["Speed"]) >= thresholds["Speed"]:
+        # Wind Speed Decrease: Compare one hour before the event with one hour after the event
+        if (before_row["Speed"] - after_row["Speed"]) >= thresholds["Speed"]:
             results["F_WindSpeed_Check"] = True
 
-        if (row["Gust"] - after_row["Gust"]) >= thresholds["Gust"]:
+        # Wind Gust Decrease: Compare one hour before the event with one hour after the event
+        if (before_row["Gust"] - after_row["Gust"]) >= thresholds["Gust"]:
             results["F_Gust_Check"] = True
 
-        # Temperature Decrease: Compare 30 minutes before the event with 30 minutes after the event
-        if (before_row["Temperature"] - after_row["Temperature"]) >= thresholds[
+        # Temperature Decrease: Compare one hour before the event with one hour after the event
+        if (before_row["Temperature"] - row["Temperature"]) >= thresholds[
             "Temperature"
         ]:
             results["F_Temperature_Check"] = True
@@ -399,27 +406,11 @@ def run_frontal_rain_checks(df, row, thresholds):
                 return wind_dir + 360
             return wind_dir
 
-        # Wind Direction Change: Check for a decrease within a broader time window
-        time_points = [
-            pd.Timedelta(minutes=10),
-            pd.Timedelta(minutes=20),
-            pd.Timedelta(minutes=30),
-        ]
-        initial_wind_dir = normalize_wind_dir(row["WindDir"])
-        wind_dir_decrease = False
+        # Wind Direction Change: Compare 30 minutes before the event with the event timestamp
+        initial_wind_dir = normalize_wind_dir(before_row["WindDir"])
+        event_wind_dir = normalize_wind_dir(row["WindDir"])
 
-        for time_point in time_points:
-            check_time = timestamp + time_point
-            check_row = df[df["DateT"] == check_time]
-
-            if not check_row.empty:
-                check_wind_dir = normalize_wind_dir(check_row.iloc[0]["WindDir"])
-                if initial_wind_dir > check_wind_dir:
-                    wind_dir_decrease = True
-                    break  # Exit loop as soon as a decrease is found
-
-        # Mark the check as passed if a decrease was detected
-        if wind_dir_decrease:
+        if (initial_wind_dir - event_wind_dir) >= thresholds["WindDir"]:
             results["F_WindDir_Check"] = True
 
         # Surface Pressure Increase
@@ -465,7 +456,10 @@ frontal_rain_checks_df = pd.DataFrame(frontal_rain_results)
 print("Frontal rain Checks DataFrame:")
 print(frontal_rain_checks_df)
 
-
+# Save data frame to csv
+frontal_rain_checks_df.to_csv(
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\FR_Bloem.csv"
+)
 ################################################################
 
 
@@ -533,8 +527,3 @@ def manual_verification(df, specific_timestamp):
 
     print("\nPreceding Hour Row:")
     print(preceding_hour_row)
-
-
-# Manual verification
-specific_timestamp = pd.Timestamp("2005-01-17 22:40:00")
-manual_verification(filtered_df, specific_timestamp)

@@ -5,10 +5,12 @@
 # high rainfall event of synoptic origin. For a start, I propose we test the annual maximum 5-min
 # rainfall values,
 
-# STEP 1: LOAD AND INSPECT THE DATA
+# IMPORT LIBRARIES
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
+import missingno as msno
 
 
 # Load the file with the correct delimiter and parse the "Date" column as datetime
@@ -60,21 +62,25 @@ print(filtered_CT.head(10))
 filtered_df = filtered_CT.copy()
 
 
-# Summary statistics function
-def summarize_statistics(filtered_df):
+# Summary statistics function with export to CSV
+def summarize_statistics(filtered_df, file_path):
     pd.set_option("display.float_format", lambda x: "%.3f" % x)
-    print(filtered_df.describe())
+    summary = filtered_df.describe()
+    print(summary)
+    summary.to_csv(file_path)
 
 
-# Summarize statistics
-summarize_statistics(filtered_df)
+# Specify the path where you want to save the file
+file_path = r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\SummaryStatsCT.csv"
+
+# Summarize statistics and export to CSV
+summarize_statistics(filtered_df, file_path)
 
 
+# Create a visualization dataframe
 def prepare_visualization_data(filtered_df):
     # Create a copy for visualizations to ensure the original data stays valid.
     visualization_df = filtered_df.copy()
-    # Extract the date (year, month, day) from the DateT column in the visualization copy
-    visualization_df["Date"] = visualization_df["DateT"].dt.date
     return visualization_df
 
 
@@ -82,6 +88,7 @@ def prepare_visualization_data(filtered_df):
 visualization_df = prepare_visualization_data(filtered_df)
 
 
+# Missing Values
 def check_missing_data(visualization_df):
     # Identify missing values
     missing_values = visualization_df.isnull().sum()
@@ -94,6 +101,10 @@ def check_missing_data(visualization_df):
 
 # Check for missing data
 check_missing_data(visualization_df)
+
+# use missingno library to visualize distribution of missing values
+msno.matrix(visualization_df)
+msno.dendrogram(visualization_df)
 
 
 # Function to check for out-of-order timestamps
@@ -121,16 +132,10 @@ def check_duplicate_timestamps(df):
 check_duplicate_timestamps(visualization_df)
 
 
-# Function to check temporal quality
-def check_temporal_quality(df):
-    # 2.3.1 Temporal consistency
-    if not df.index.is_monotonic_increasing:
-        print("Timestamps are not in chronological order.")
-    else:
-        print("Timestamps are in chronological order.")
+# Accuracy of a time measurement
 
-    # 2.3.2 Accuracy of a time measurement
-    # MISSING TIME STAMPS
+
+def check_temporal_quality(df):
     # Set DateT as the index in the visualization copy
     df.set_index("DateT", inplace=True)
 
@@ -177,15 +182,13 @@ print(filtered_df.head())
 
 # Function to identify annual maximum rainfall
 def identify_annual_max_rainfall(df):
-    annual_max_rainfall = df.loc[df.groupby(df["DateT"].dt.year)["Rain"].idxmax()]
-    print("Annual Maximum Rainfall Events:\n", annual_max_rainfall)
+    # Function to identify annual maximum rainfall
+    return df.loc[df.groupby(df["DateT"].dt.year)["Rain"].idxmax()]
 
 
-# Identify annual maximum rainfall
+# Assign annual maximum rainfall using the function
 annual_max_rainfall = identify_annual_max_rainfall(filtered_df)
-annual_max_rainfall = filtered_df.loc[
-    filtered_df.groupby(filtered_df["DateT"].dt.year)["Rain"].idxmax()
-]
+print("Annual Maximum Rainfall Events:\n", annual_max_rainfall)
 
 
 def plot_annual_max_rainfall(df):
@@ -281,12 +284,17 @@ for _, row in annual_max_rainfall.iterrows():
 
 all_checks_df = pd.DataFrame(check_results)
 
-print("Storm Checks DataFrame:")
+print("Thunderstorm Checks DataFrame:")
 print(all_checks_df)
+
+# Save data frame to csv
+all_checks_df.to_csv(
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\StormCT.csv"
+)
 
 ################################################################
 
-
+# Frontal rain check
 # Define thresholds for frontal rain checks with lowercase keys
 frontal_rain_thresholds = {
     "Humidity": 90,  # % absolute threshold or rising to within an hour
@@ -422,13 +430,13 @@ frontal_rain_checks_df = pd.DataFrame(frontal_rain_results)
 print("Frontal rain Checks DataFrame:")
 print(frontal_rain_checks_df)
 
+# Save data frame to csv
+frontal_rain_checks_df.to_csv(
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\FR_CT.csv"
+)
+
 
 ################################################################
-
-
-# filtered_df["DateT"] = pd.to_datetime(filtered_df["DateT"])
-# filtered_df.set_index("DateT", inplace=True)
-
 
 # PLOT DATA
 
