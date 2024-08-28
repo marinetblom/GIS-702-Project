@@ -43,10 +43,6 @@ CT["Pressure"] = CT["Pressure"].apply(clean_pressure)
 # Explicitly change the dtype to float64 after cleaning
 CT["Pressure"] = CT["Pressure"].astype("float64")
 
-# Check if the pressure column is correct
-print(CT.head())
-print(CT.dtypes)
-
 # Filter the dataframe to exclude 1997 and include only the desired years
 filtered_CT = CT[
     (CT["DateT"].dt.year >= 1995) & (CT["DateT"].dt.year <= 1998)
@@ -55,10 +51,8 @@ filtered_CT = CT[
 
 # Reset the index to start from 0
 filtered_CT.reset_index(drop=True, inplace=True)
-print(filtered_CT.head(10))
 
 # Load in dataframe
-
 filtered_df = filtered_CT.copy()
 
 
@@ -133,8 +127,6 @@ check_duplicate_timestamps(visualization_df)
 
 
 # Accuracy of a time measurement
-
-
 def check_temporal_quality(df):
     # Set DateT as the index in the visualization copy
     df.set_index("DateT", inplace=True)
@@ -300,11 +292,30 @@ frontal_rain_thresholds = {
     "Humidity": 90,  # % absolute threshold or rising to within an hour
     "Humidity_min": 80,  # % minimum
     "Temperature": 1,  # °C decrease
-    "Speed": 3,  # m/s decrease
+    "Speed": 2,  # m/s decrease
     "WindDir": 30,  # degrees change
     "Pressure": 1,  # Any positive hPa increase
     "Gust": 3,  # m/s decrease
 }
+
+
+# Function to calculate the average over a 1-hour window (12 timestamps)
+def calculate_average_in_window(df, timestamp, direction, param):
+    if direction == "before":
+        window_df = df[
+            (df["DateT"] <= timestamp)
+            & (df["DateT"] > timestamp - pd.Timedelta(hours=1))
+        ]
+    elif direction == "after":
+        window_df = df[
+            (df["DateT"] >= timestamp)
+            & (df["DateT"] < timestamp + pd.Timedelta(hours=1))
+        ]
+
+    # Calculate the mean for the specified parameter, ignoring NaN values
+    param_avg = window_df[param].mean()
+
+    return param_avg
 
 
 # Define the frontal rain check function
@@ -314,16 +325,11 @@ def run_frontal_rain_checks(df, row, thresholds):
     results["Rain"] = row["Rain"]
 
     timestamp = row["DateT"]
-    one_hour_before = timestamp - pd.Timedelta(hours=1)
-    one_hour_after = timestamp + pd.Timedelta(hours=1)
-    six_hours_after = timestamp + pd.Timedelta(hours=6)
-
     six_hours_after = timestamp + pd.Timedelta(hours=6)
 
     # Initialize all checks as False
     results.update(
         {
-            "F_WindSpeed_Check": False,
             "F_Gust_Check": False,
             "F_Temperature_Check": False,
             "F_Humidity_Check": False,
@@ -332,40 +338,42 @@ def run_frontal_rain_checks(df, row, thresholds):
         }
     )
 
-    # Fetch corresponding rows from the filtered DataFrame
-    before_row = df[df["DateT"] == one_hour_before]
-    after_row = df[df["DateT"] == one_hour_after]
-    six_hours_row = df[df["DateT"] == six_hours_after]
+    # Calculate the averages before and after the event for Gust and Temperature
+    before_gust_avg = calculate_average_in_window(df, timestamp, "before", param="Gust")
+    after_gust_avg = calculate_average_in_window(df, timestamp, "after", param="Gust")
 
-    # Initialize one_hour_row in case it's not defined later
-    one_hour_row = pd.DataFrame()
+    before_temp_avg = calculate_average_in_window(
+        df, timestamp, "before", param="Temperature"
+    )
+    after_temp_avg = calculate_average_in_window(
+        df, timestamp, "after", param="Temperature"
+    )
 
-    if not before_row.empty and not after_row.empty:
-        before_row = before_row.iloc[0]
-        after_row = after_row.iloc[0]
+    # Debugging: Print the averages
+    print(f"Timestamp: {timestamp}")
+    print(f"Before Gust Avg: {before_gust_avg}, After Gust Avg: {after_gust_avg}")
+    print(f"Before Temp Avg: {before_temp_avg}, After Temp Avg: {after_temp_avg}")
 
-        # Wind Speed Decrease: Compare one hour before the event with one hour after the event
-        if (before_row["Speed"] - after_row["Speed"]) >= thresholds["Speed"]:
-            results["F_WindSpeed_Check"] = True
+    # Wind Gust Decrease: Compare the average one hour before the event with one hour after the event
+    gust_diff = before_gust_avg - after_gust_avg
+    if gust_diff >= thresholds["Gust"]:
+        results["F_Gust_Check"] = True
+    print(
+        f"Gust Diff: {gust_diff}, Threshold: {thresholds['Gust']}, Check: {results['F_Gust_Check']}"
+    )
 
-        # Wind Gust Decrease: Compare one hour before the event with one hour after the event
-        if (before_row["Gust"] - after_row["Gust"]) >= thresholds["Gust"]:
-            results["F_Gust_Check"] = True
+    # Temperature Decrease: Check if there is any decrease in temperature
+    temp_diff = before_temp_avg - after_temp_avg
+    if temp_diff > 0:  # Check if temperature decreased
+        results["F_Temperature_Check"] = True
+    print(f"Temp Diff: {temp_diff}, Check: {results['F_Temperature_Check']}")
 
-        # Temperature Decrease: Compare one hour before the event with one hour after the event
-        if (before_row["Temperature"] - row["Temperature"]) >= thresholds[
-            "Temperature"
-        ]:
-            results["F_Temperature_Check"] = True
-
-        # Humidity Check
-        if row["Humidity"] >= thresholds["Humidity"]:
-            results["F_Humidity_Check"] = True
-        else:
-            # Check if humidity rises from above 80% to at least 90% within an hour after the event
-            one_hour_after = timestamp + pd.Timedelta(hours=1)
-            one_hour_row = df[df["DateT"] == one_hour_after]
-
+    # Humidity Check
+    if row["Humidity"] >= thresholds["Humidity"]:
+        results["F_Humidity_Check"] = True
+    else:
+        # Check if humidity rises from above 80% to at least 90% within an hour after the event
+        one_hour_row = df[(df["DateT"] == timestamp + pd.Timedelta(hours=1))]
         if not one_hour_row.empty:
             one_hour_row = one_hour_row.iloc[0]
             if (
@@ -374,34 +382,34 @@ def run_frontal_rain_checks(df, row, thresholds):
             ):
                 results["F_Humidity_Check"] = True
 
-        # Normalize wind direction for wrap-around (add 360 to directions < 90)
-        def normalize_wind_dir(wind_dir):
-            if wind_dir < 90:
-                return wind_dir + 360
-            return wind_dir
+    # Normalize wind direction for wrap-around (add 360 to directions < 90)
+    def normalize_wind_dir(wind_dir):
+        return wind_dir + 360 if wind_dir < 90 else wind_dir
 
-        # Wind Direction Change: Compare 30 minutes before the event with the event timestamp
-        initial_wind_dir = normalize_wind_dir(before_row["WindDir"])
+    # Wind Direction Change: Compare 1 hour before the event with the event timestamp
+    before_temp_row = df[(df["DateT"] == timestamp - pd.Timedelta(hours=1))]
+    if not before_temp_row.empty:
+        before_temp_row = before_temp_row.iloc[0]
+        initial_wind_dir = normalize_wind_dir(before_temp_row["WindDir"])
         event_wind_dir = normalize_wind_dir(row["WindDir"])
-
         if (initial_wind_dir - event_wind_dir) >= thresholds["WindDir"]:
             results["F_WindDir_Check"] = True
 
-        # Surface Pressure Increase
-        if not six_hours_row.empty:
-            six_hours_row = six_hours_row.iloc[0]
-            if six_hours_row["Pressure"] > row["Pressure"]:
-                results["F_Pressure_Check"] = True
+    # Surface Pressure Increase: Compare event timestamp with 6 hours later
+    six_hours_row = df[(df["DateT"] == six_hours_after)]
+    if not six_hours_row.empty:
+        six_hours_row = six_hours_row.iloc[0]
+        if six_hours_row["Pressure"] > row["Pressure"]:
+            results["F_Pressure_Check"] = True
 
     # Determine if it meets frontal rain criteria
     results["FrontalRain"] = (
-        int(results["F_WindSpeed_Check"])
-        + int(results["F_Gust_Check"])
+        int(results["F_Gust_Check"])
         + int(results["F_Temperature_Check"])
         + int(results["F_Humidity_Check"])
         + int(results["F_WindDir_Check"])
         + int(results["F_Pressure_Check"])
-    ) >= 4
+    ) >= 3
 
     return results
 
@@ -430,6 +438,7 @@ frontal_rain_checks_df = pd.DataFrame(frontal_rain_results)
 print("Frontal rain Checks DataFrame:")
 print(frontal_rain_checks_df)
 
+
 # Save data frame to csv
 frontal_rain_checks_df.to_csv(
     r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\FR_CT.csv"
@@ -457,19 +466,12 @@ def plot_all_parameters_around_event(df, timestamp, window):
     # Wind Speed and Gust on the same plot
     axs[0].plot(
         plot_data["DateT"],
-        plot_data["Speed"],
-        label="Speed (m/s)",
-        color="blue",
-        marker="o",
-    )
-    axs[0].plot(
-        plot_data["DateT"],
         plot_data["Gust"],
         label="Gust (m/s)",
         color="green",
         marker="o",
     )
-    axs[0].set_ylabel("Speed & Gust (m/s)")
+    axs[0].set_ylabel("Gust (m/s)")
     axs[0].legend()
     axs[0].grid(True)
     axs[0].set_title(f"Weather Parameters Around {timestamp}")
@@ -486,30 +488,17 @@ def plot_all_parameters_around_event(df, timestamp, window):
     axs[1].legend()
     axs[1].grid(True)
 
-    # Humidity and Wind Direction on their own plot
+    #  Wind Direction on their own plot
     axs[2].plot(
-        plot_data["DateT"],
-        plot_data["Humidity"],
-        label="Humidity (%)",
-        color="orange",
-        marker="o",
-    )
-    axs[2].set_ylabel("Humidity (%)", color="orange")
-    axs[2].legend(loc="upper left")
-    axs[2].grid(True)
-
-    ax2 = axs[
-        2
-    ].twinx()  # Create a twin y-axis to plot wind direction on the same subplot
-    ax2.plot(
         plot_data["DateT"],
         plot_data["WindDir"],
         label="WindDir (°)",
         color="cyan",
         marker="o",
     )
-    ax2.set_ylabel("Wind Direction (°)", color="cyan")
-    ax2.legend(loc="upper right")
+    axs[2].set_ylabel("Wind Direction (°)", color="cyan")
+    axs[2].legend(loc="upper right")
+    axs[2].grid(True)
 
     # Set x-axis label and format
     axs[2].set_xlabel("Time")
