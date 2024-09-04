@@ -1,7 +1,7 @@
 # main.py
 import pandas as pd
 
-from preprocessing import load_cape_town, load_bloemfontein
+from preprocessing import load_cape_town, load_bloemfontein, load_durban
 
 from logical import summarize_statistics
 
@@ -19,19 +19,26 @@ from storm_detection import (
     run_thunderstorm_checks,
 )
 
-from frontal_rain import apply_frontal_rain_checks
+from frontal_rain import apply_frontal_rain_check
 
 # Choose the dataset
-dataset_name = input("Enter the dataset name (cape_town or bloemfontein): ")
+dataset_name = input("Enter the dataset name (cape_town, bloemfontein, or durban): ")
 
 if dataset_name == "cape_town":
     filtered_df = load_cape_town()
 elif dataset_name == "bloemfontein":
     filtered_df = load_bloemfontein()
+elif dataset_name == "durban":
+    filtered_df = load_durban()
 else:
     raise ValueError(
-        "Invalid dataset name provided. Choose 'cape_town' or 'bloemfontein'."
+        "Invalid dataset name provided. Choose 'cape_town', 'bloemfontein', or 'durban'."
     )
+# verify if the dataset is loading correctly
+print(filtered_df.head())
+
+# verify data types
+filtered_df.dtypes
 
 ################################
 
@@ -88,5 +95,26 @@ all_checks_df.to_csv(
 
 ########################################################################
 
-# Apply frontal rain checks
-apply_frontal_rain_checks(filtered_df, all_checks_df)
+# Apply the frontal rain check to the entire dataset
+frontal_rain_checks_df = apply_frontal_rain_check(filtered_df, annual_max_rainfall)
+
+# Print the final results of the frontal rain check
+print("Frontal rain Checks DataFrame:")
+print(frontal_rain_checks_df)
+
+################################################################
+
+# Combine thunderstorm and frontal rain check results
+final_df = pd.merge(
+    all_checks_df[
+        ["Date", "Thunderstorm"]
+    ],  # Keep only the necessary columns from all_checks_df
+    frontal_rain_checks_df[
+        ["Date", "FrontalRain"]
+    ],  # Keep only the necessary columns from frontal_rain_checks_df
+    on="Date",  # Merge on the Date column
+)
+
+# Display the final DataFrame showing both checks
+print("Final Check Results DataFrame:")
+print(final_df)

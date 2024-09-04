@@ -9,7 +9,6 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 import missingno as msno
 
 
@@ -22,26 +21,24 @@ CT = pd.read_csv(
     parse_dates=["DateT"],  # Automatically parse 'DateT' as datetime
 )
 
+CT.info
 
+
+# STEP 2: DEFINE THE CLEANING FUNCTION
 def clean_pressure(value):
     if isinstance(value, str):
-        # Remove non-numeric and non-decimal characters, specifically targeting escaped characters
-        cleaned_value = "".join(c for c in value if c.isdigit() or c == "." or c == ",")
-        # Replace comma with dot in case it's used as decimal separator
-        cleaned_value = cleaned_value.replace(",", ".")
+        cleaned_value = value.replace("\xa0", "").replace(" ", "").replace(",", ".")
         try:
-            # Try to convert the cleaned string to float
             return float(cleaned_value)
         except ValueError:
-            # Return None or np.nan to identify values that still cause issues
             return np.nan
+    else:
+        return np.nan
 
 
-# Apply the cleaning function to the Pressure column
+# STEP 3: APPLY THE CLEANING FUNCTION
 CT["Pressure"] = CT["Pressure"].apply(clean_pressure)
 
-# Explicitly change the dtype to float64 after cleaning
-CT["Pressure"] = CT["Pressure"].astype("float64")
 
 # Filter the dataframe to exclude 1997 and include only the desired years
 filtered_CT = CT[
@@ -292,7 +289,6 @@ frontal_rain_thresholds = {
     "Humidity": 90,  # % absolute threshold or rising to within an hour
     "Humidity_min": 80,  # % minimum
     "Temperature": 1,  # °C decrease
-    "Speed": 2,  # m/s decrease
     "WindDir": 30,  # degrees change
     "Pressure": 1,  # Any positive hPa increase
     "Gust": 3,  # m/s decrease
@@ -417,9 +413,12 @@ def run_frontal_rain_checks(df, row, thresholds):
 # Application of the Function
 frontal_rain_results = []
 
-# Iterate over rows where Thunderstorm is False
-for _, row in all_checks_df[all_checks_df["Thunderstorm"] == False].iterrows():
-    corresponding_row = filtered_df[filtered_df["DateT"] == row["Date"]]
+# Frontal rain check on the entire annual_max_rainfall DataFrame
+frontal_rain_results = []
+
+# Iterate over all rows in the annual_max_rainfall DataFrame
+for _, row in annual_max_rainfall.iterrows():
+    corresponding_row = filtered_df[filtered_df["DateT"] == row["DateT"]]
 
     # Only proceed if a corresponding row is found
     if not corresponding_row.empty:
@@ -446,6 +445,23 @@ frontal_rain_checks_df.to_csv(
 
 
 ################################################################
+
+
+# Combine thunderstorm and frontal rain check results
+final_df = pd.merge(
+    all_checks_df[
+        ["Date", "Thunderstorm"]
+    ],  # Keep only the necessary columns from all_checks_df
+    frontal_rain_checks_df[
+        ["Date", "FrontalRain"]
+    ],  # Keep only the necessary columns from frontal_rain_checks_df
+    on="Date",  # Merge on the Date column
+)
+
+# Display the final DataFrame showing both checks
+print("Final Check Results DataFrame:")
+print(final_df)
+
 
 # PLOT DATA
 
@@ -510,9 +526,7 @@ def plot_all_parameters_around_event(df, timestamp, window):
 
 
 # Iterate over rows where FrontalRain is False
-for _, row in frontal_rain_checks_df[
-    frontal_rain_checks_df["FrontalRain"] == False
-].iterrows():
+for _, row in frontal_rain_checks_df[~frontal_rain_checks_df["FrontalRain"]].iterrows():
     timestamp = row["Date"]
     print(f"Plotting for timestamp: {timestamp}")
     plot_all_parameters_around_event(filtered_df, timestamp, window="60T")

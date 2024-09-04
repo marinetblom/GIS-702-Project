@@ -34,8 +34,6 @@ filtered_bloem.reset_index(drop=True, inplace=True)
 # Display the first few rows and data types
 print(filtered_bloem.head())
 
-################################################################
-
 filtered_df = filtered_bloem.copy()
 
 
