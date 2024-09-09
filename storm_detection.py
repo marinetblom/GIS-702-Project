@@ -77,3 +77,13 @@ def run_thunderstorm_checks(df, row, thresholds):
     ) >= 4
 
     return results
+
+
+# Function to apply thunderstorm checks to the entire DataFrame
+def apply_thunderstorm_checks(df, annual_max_rainfall, thresholds):
+    check_results = []
+    for _, row in annual_max_rainfall.iterrows():
+        check_results.append(run_thunderstorm_checks(df, row, thresholds))
+
+    all_checks_df = pd.DataFrame(check_results)
+    return all_checks_df

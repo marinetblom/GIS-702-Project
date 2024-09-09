@@ -1,16 +1,6 @@
 # frontal_rain.py
 import pandas as pd
 
-# Define thresholds for frontal rain checks with lowercase keys
-frontal_rain_thresholds = {
-    "Humidity": 90,  # % absolute threshold or rising to within an hour
-    "Humidity_min": 80,  # % minimum
-    "Temperature": 1,  # °C decrease
-    "WindDir": 30,  # degrees change
-    "Pressure": 1,  # Any positive hPa increase
-    "Gust": 3,  # m/s decrease
-}
-
 
 # Function to calculate the average over a 1-hour window (12 timestamps)
 def calculate_average_in_window(df, timestamp, direction, param):
@@ -30,7 +20,7 @@ def calculate_average_in_window(df, timestamp, direction, param):
 
 
 # Define the frontal rain check function
-def run_frontal_rain_checks(df, row, thresholds=frontal_rain_thresholds):
+def run_frontal_rain_checks(df, row, thresholds):
     results = {}
     results["Date"] = row["DateT"]
     results["Rain"] = row["Rain"]
@@ -117,7 +107,7 @@ def run_frontal_rain_checks(df, row, thresholds=frontal_rain_thresholds):
 
 
 # Function to run frontal rain check on the entire DataFrame
-def apply_frontal_rain_check(df, annual_max_rainfall):
+def apply_frontal_rain_check(df, annual_max_rainfall, thresholds):
     frontal_rain_results = []
     for _, row in annual_max_rainfall.iterrows():
         corresponding_row = df[df["DateT"] == row["DateT"]]
@@ -125,7 +115,7 @@ def apply_frontal_rain_check(df, annual_max_rainfall):
             corresponding_row = corresponding_row.iloc[0]
             # Perform the frontal rain check
             frontal_rain_results.append(
-                run_frontal_rain_checks(df, corresponding_row, frontal_rain_thresholds)
+                run_frontal_rain_checks(df, corresponding_row, thresholds)
             )
     # Convert to DataFrame
     frontal_rain_checks_df = pd.DataFrame(frontal_rain_results)

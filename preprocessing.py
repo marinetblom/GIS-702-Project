@@ -2,9 +2,8 @@
 import pandas as pd
 import numpy as np
 
+
 ################################
-
-
 def clean_pressure(value):
     if isinstance(value, str):
         cleaned_value = value.replace("\xa0", "").replace(" ", "").replace(",", ".")
@@ -72,6 +71,23 @@ def load_durban():
     # Clean the Pressure column
     df["Pressure"] = df["Pressure"].apply(clean_pressure)
     df["Pressure"] = df["Pressure"].astype("float64")
+
+    # You can add additional filtering here if required
+    filtered_df = df.copy()
+    return filtered_df
+
+
+################################
+def load_johannesburg():
+    # Load the Johannesburg dataset
+    df = pd.read_csv(
+        r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Data\0476399 0 5min.ttx",
+        delimiter="\t",
+        encoding="latin1",
+        decimal=",",
+        parse_dates=["DateT"],
+        date_format="%m/%d/%Y %I:%M:%S%p",  # Use the correct date format for Johannesburg dataset
+    )
 
     # You can add additional filtering here if required
     filtered_df = df.copy()
