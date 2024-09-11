@@ -20,7 +20,7 @@ def calculate_average_in_window(df, timestamp, direction, param):
 
 
 # Define the frontal rain check function
-def run_frontal_rain_checks(df, row, thresholds):
+def run_frontal_rain_checks(df, row, thresholds, weights):
     results = {}
     results["Date"] = row["DateT"]
     results["Rain"] = row["Rain"]
@@ -94,28 +94,31 @@ def run_frontal_rain_checks(df, row, thresholds):
         if six_hours_row["Pressure"] > row["Pressure"]:
             results["F_Pressure_Check"] = True
 
-    # Determine if it meets frontal rain criteria
-    results["FrontalRain"] = (
-        int(results["F_Gust_Check"])
-        + int(results["F_Temperature_Check"])
-        + int(results["F_Humidity_Check"])
-        + int(results["F_WindDir_Check"])
-        + int(results["F_Pressure_Check"])
-    ) >= 3
+    # Calculate the weighted score based on the weights provided
+    weighted_score = (
+        int(results["F_Gust_Check"]) * weights["Gust"]
+        + int(results["F_Temperature_Check"]) * weights["Temperature"]
+        + int(results["F_Humidity_Check"]) * weights["Humidity"]
+        + int(results["F_WindDir_Check"]) * weights["WindDir"]
+        + int(results["F_Pressure_Check"]) * weights["Pressure"]
+    )
+
+    # Determine if it meets frontal rain criteria based on the weighted score
+    results["FrontalRain"] = weighted_score >= 3  # You can adjust this threshold
 
     return results
 
 
 # Function to run frontal rain check on the entire DataFrame
-def apply_frontal_rain_check(df, annual_max_rainfall, thresholds):
+def apply_frontal_rain_check(df, event_df, thresholds, weights):
     frontal_rain_results = []
-    for _, row in annual_max_rainfall.iterrows():
+    for _, row in event_df.iterrows():
         corresponding_row = df[df["DateT"] == row["DateT"]]
         if not corresponding_row.empty:
             corresponding_row = corresponding_row.iloc[0]
             # Perform the frontal rain check
             frontal_rain_results.append(
-                run_frontal_rain_checks(df, corresponding_row, thresholds)
+                run_frontal_rain_checks(df, corresponding_row, thresholds, weights)
             )
     # Convert to DataFrame
     frontal_rain_checks_df = pd.DataFrame(frontal_rain_results)
