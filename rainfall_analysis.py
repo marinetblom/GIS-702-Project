@@ -20,47 +20,63 @@ def plot_annual_max_rainfall(df):
     plt.show()
 
 
-# Function to apply POT filter
-def apply_pot_filter(df, threshold_percent=90):
-    df = df[df["Rain"] > 0]
-    threshold_value = df["Rain"].quantile(threshold_percent / 100)
-    pot_df = df[df["Rain"] >= threshold_value]
-    return pot_df
+# Function to apply POT filter based on a direct threshold value
+def apply_pot_filter(df, threshold_value=3):
+    df = df[df["Rain"] > threshold_value]
+    return df
 
 
-# Function to identify max rainfall events using moving average (optimized)
+# Function to identify max rainfall events using moving average (optimized with overlapping windows)
 def identify_moving_average_max_rainfall_optimized(df, window_size_minutes):
     max_events = []
-    window_freq = f"{window_size_minutes}min"
+    window_size = window_size_minutes // 5  # Since the data is measured every 5 minutes
 
     # Group the data by year
     for year, year_df in df.groupby(df["DateT"].dt.year):
-        # Resample the data to get rainfall sums for each window
-        resampled_df = (
-            year_df.set_index("DateT")
-            .resample(window_freq)
-            .sum(min_count=1)
-            .reset_index()
+        print(f"\nProcessing year: {year} with {len(year_df)} data points.")
+
+        # Set DateT as index for rolling calculation
+        year_df = year_df.set_index("DateT")
+
+        # Resample the data to ensure consistent 5-minute intervals, filling missing timestamps with NaN
+        year_df = year_df.resample("5min").asfreq()  # Fix for the deprecation warning
+
+        print(f"After resampling, the year has {len(year_df)} data points.")
+
+        # Optionally, fill NaNs in the Rain column (no inplace=True to avoid the warning)
+        year_df["Rain"] = year_df["Rain"].fillna(0)  # Fix for the inplace warning
+
+        # Calculate rolling sum of Rain for the given window size (overlapping windows)
+        year_df["Rain_MA"] = (
+            year_df["Rain"].rolling(window=window_size, min_periods=1).sum()
         )
 
-        # Find the window with the highest total rainfall
-        max_row = resampled_df.loc[resampled_df["Rain"].idxmax()]
-        start_time = max_row["DateT"]
-        end_time = start_time + pd.Timedelta(minutes=window_size_minutes)
+        # Check if the rolling calculation worked correctly
+        print(f"Rolling window calculation complete for year: {year}")
+
+        # Find the time window with the highest rolling sum
+        max_rainfall_idx = year_df["Rain_MA"].idxmax()
+        max_rainfall_row = year_df.loc[max_rainfall_idx]
+        max_rain = max_rainfall_row["Rain_MA"]
+
+        # Define start and end of the maximum rolling window
+        end_time = max_rainfall_idx
+        start_time = end_time - pd.Timedelta(minutes=window_size_minutes)
 
         # Print the details of the maximum window
         print(
-            f"Year: {year}, Max Window: {start_time} to {end_time}, Total Rain: {max_row['Rain']} mm"
+            f"Year: {year}, Max Window: {start_time} to {end_time}, Total Rain: {max_rain} mm"
         )
 
         # Filter original data within the identified window
         window_df = year_df[
-            (year_df["DateT"] >= start_time) & (year_df["DateT"] <= end_time)
-        ]
+            (year_df.index >= start_time) & (year_df.index <= end_time)
+        ].reset_index()
 
         # Find the row with the maximum rainfall in this window
         max_event = window_df.loc[window_df["Rain"].idxmax()]
         max_events.append(max_event)
 
+    # Return a DataFrame of the identified maximum events
     max_events_df = pd.DataFrame(max_events)
     return max_events_df

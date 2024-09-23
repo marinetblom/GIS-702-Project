@@ -26,28 +26,26 @@ from rainfall_analysis import (
     identify_moving_average_max_rainfall_optimized,
 )
 
-from storm_detection import (
-    apply_thunderstorm_checks
-)
+from storm_detection import apply_thunderstorm_checks
 
 from frontal_rain import apply_frontal_rain_check
 
 # Choose the dataset
 dataset_name = input(
-    "Enter the dataset name (cape_town, bloemfontein, durban, or johannesburg): "
+    "Enter the dataset name (0021178a3 (CT), 0261516b0 (Bloem), 0241186a6 (Durban), or 0476399 0 (Jhb)): "
 )
 
-if dataset_name == "cape_town":
+if dataset_name == "0021178a3":
     filtered_df = load_cape_town()
-elif dataset_name == "bloemfontein":
+elif dataset_name == "0261516b0":
     filtered_df = load_bloemfontein()
-elif dataset_name == "durban":
+elif dataset_name == "0241186a6":
     filtered_df = load_durban()
-elif dataset_name == "johannesburg":
+elif dataset_name == "0476399 0":
     filtered_df = load_johannesburg()
 else:
     raise ValueError(
-        "Invalid dataset name provided. Choose 'cape_town', 'bloemfontein', 'durban', or 'johannesburg'."
+        "Invalid dataset name provided. Choose '0021178a3', '0261516b0', '0241186a6', or '0476399 0'."
     )
 
 # Verify if the dataset is loading correctly
@@ -82,16 +80,26 @@ plot_annual_max_rainfall(annual_max_rainfall)
 
 
 # 2. Define and apply POT filter
-threshold_percent = float(input("Enter the threshold percentage for POT (e.g., 90 for top 10%): "))
-pot_filtered_df = apply_pot_filter(filtered_df, threshold_percent)
-print(f"Filtered DataFrame for POT with top {100 - threshold_percent}% values:\n", pot_filtered_df)
+threshold_value = float(input("Enter the rainfall threshold value: "))
+pot_filtered_df = apply_pot_filter(filtered_df, threshold_value)
+print(
+    f"Filtered DataFrame for POT with rainfall values greater than {threshold_value}:\n",
+    pot_filtered_df,
+)
 print(f"Number of rows in filtered DataFrame: {pot_filtered_df.shape[0]}")
 
 
 # 3. Identify the maximum rainfall events for each year based on moving average
-window_size_minutes = int(input("Enter the window size in minutes (e.g., 60 for 1 hour): "))
-moving_average_max_rainfall_df = identify_moving_average_max_rainfall_optimized(filtered_df, window_size_minutes)
-print("Maximum Rainfall Events Based on Moving Average (Optimized):\n", moving_average_max_rainfall_df)
+window_size_minutes = int(
+    input("Enter the window size in minutes (e.g., 60 for 1 hour): ")
+)
+moving_average_max_rainfall_df = identify_moving_average_max_rainfall_optimized(
+    filtered_df, window_size_minutes
+)
+print(
+    "Maximum Rainfall Events Based on Moving Average (Optimized):\n",
+    moving_average_max_rainfall_df,
+)
 
 
 ################################################################
@@ -110,9 +118,9 @@ thresholds = {
 
 # Define weights for the storm detection checks
 storm_weights = {
-    "Humidity": 1,  
-    "Temperature": 1,  
-    "Speed": 1,  
+    "Humidity": 1,
+    "Temperature": 1,
+    "Speed": 1,
     "WindDir": 1,  #
     "Pressure": 1,  # Lower weight for pressure in storm detection
     "Gust": 2,  # Higher weight for gusts in storm detection
@@ -127,7 +135,7 @@ print(all_checks_df)
 
 # Save results for annual max rainfall checks
 all_checks_df.to_csv(
-    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Storm_Result.csv"
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Storm_AnnualMax_Result.csv"
 )
 
 
@@ -172,9 +180,9 @@ frontal_rain_thresholds = {
 
 # Define weights for frontal rain checks
 frontal_rain_weights = {
-    "Humidity": 1,  
-    "Temperature": 1,  
-    "WindDir": 1,  
+    "Humidity": 1,
+    "Temperature": 1,
+    "WindDir": 1,
     "Pressure": 2,  # Higher weight for pressure in frontal rain detection
     "Gust": 1,  # Lower weight for gusts in frontal rain detection
 }
@@ -188,7 +196,7 @@ print(frontal_rain_checks_df)
 
 # Save data frame to CSV
 frontal_rain_checks_df.to_csv(
-    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Frontal_Rain_Result.csv"
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Frontal_Rain_AnnualMax_Result.csv"
 )
 
 
@@ -206,15 +214,22 @@ frontal_rain_checks_df_pot.to_csv(
 
 
 # 3. Apply the frontal rain check to the **moving average dataset**
-frontal_rain_checks_df_ma = apply_frontal_rain_check(filtered_df, moving_average_max_rainfall_df, frontal_rain_thresholds, frontal_rain_weights)
+frontal_rain_checks_df_ma = apply_frontal_rain_check(
+    filtered_df,
+    moving_average_max_rainfall_df,
+    frontal_rain_thresholds,
+    frontal_rain_weights,
+)
 print("Frontal Rain Checks for Moving Average DataFrame:")
 print(frontal_rain_checks_df_ma)
 
-frontal_rain_checks_df_ma.to_csv(r"C:\path\to\Results\Frontal_Rain_Moving_Avg_Result.csv")
+frontal_rain_checks_df_ma.to_csv(
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Frontal_Rain_MA_Result.csv"
+)
 
 ################################################################
 
-# 1. Combine thunderstorm and frontal rain check results
+# 1. Combine thunderstorm and frontal rain check results AUNNUAL MAX
 final_df = pd.merge(
     all_checks_df[
         ["Date", "Thunderstorm"]
@@ -226,15 +241,15 @@ final_df = pd.merge(
 )
 
 # Display the final DataFrame showing both checks
-print("Final Check Results DataFrame:")
+print("Final Check Results DataFrame for Annual Max:")
 print(final_df)
 
 # Save data frame to CSV
 final_df.to_csv(
-    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Final.csv"
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Final_ANNUAL.csv"
 )
 
-# 2. Combine thunderstorm and frontal rain check results
+# 2. Combine thunderstorm and frontal rain check results POT
 final_df_POT = pd.merge(
     all_checks_df_pot[["Date", "Thunderstorm"]],
     frontal_rain_checks_df_pot[["Date", "FrontalRain"]],
@@ -242,12 +257,28 @@ final_df_POT = pd.merge(
 )
 
 # Display the final DataFrame showing both checks
-print("Final Check Results DataFrame:")
+print("Final Check Results DataFrame for POT:")
 print(final_df_POT)
 
 # Save data frame to CSV
-final_df.to_csv(
-    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Final.csv"
+final_df_POT.to_csv(
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Final_POT.csv"
+)
+
+# 3. Combine thunderstorm and frontal rain check results MA
+final_df_MA = pd.merge(
+    all_checks_df_ma[["Date", "Thunderstorm"]],
+    frontal_rain_checks_df_ma[["Date", "FrontalRain"]],
+    on="Date",  # Merge on the Date column
+)
+
+# Display the final DataFrame showing both checks
+print("Final Check Results DataFrame for MA:")
+print(final_df_MA)
+
+# Save data frame to CSV
+final_df_MA.to_csv(
+    r"C:\Users\Dell 5401\Documents\Honours\GIS 702 Research Project\GIS-702-Project\Results\Final_MA.csv"
 )
 
 
