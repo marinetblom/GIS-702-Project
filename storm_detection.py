@@ -1,6 +1,5 @@
 # storm_detection.py
 import pandas as pd
-import matplotlib.pyplot as plt
 
 
 # Function to run thunderstorm checks
@@ -18,10 +17,28 @@ def run_thunderstorm_checks(df, row, thresholds, weights):
             "WindDir_Check": False,
             "Pressure_Check": False,
             "Gust_Check": False,
+            "Rain_Check": False,  # Add a new Rain Check
         }
     )
 
     timestamp = row["DateT"]
+
+    # Check for previous and next 5-minute interval rain data
+    prev_5min = timestamp - pd.Timedelta(minutes=5)
+    next_5min = timestamp + pd.Timedelta(minutes=5)
+
+    # Get the previous and next rows if available
+    prev_rain_row = df.loc[df["DateT"] == prev_5min]
+    next_rain_row = df.loc[df["DateT"] == next_5min]
+
+    if not prev_rain_row.empty and not next_rain_row.empty:
+        prev_rain = prev_rain_row.iloc[0]["Rain"]
+        next_rain = next_rain_row.iloc[0]["Rain"]
+
+        # Check if rain in both intervals is greater than 0mm
+        results["Rain_Check"] = prev_rain > 0 or next_rain > 0
+
+    # Existing checks for the last 1 hour
     if timestamp - pd.Timedelta(hours=1) in df["DateT"].values:
         prev_row = df.loc[df["DateT"] == timestamp - pd.Timedelta(hours=1)].iloc[0]
 
@@ -48,13 +65,13 @@ def run_thunderstorm_checks(df, row, thresholds, weights):
                 # Apply the check and store True/False
                 results[param + "_Check"] = diff > thresholds[param]
 
-    # Calculate the weighted score
+    # Calculate the weighted score including the new Rain_Check
     weighted_score = sum(
         int(results[param + "_Check"]) * weights[param] for param in weights
     )
 
     # Define threshold for determining if it's a thunderstorm (adjustable)
-    results["Thunderstorm"] = weighted_score >= 4  # You can adjust this threshold
+    results["Thunderstorm"] = weighted_score >= 5  # You can adjust this threshold
 
     return results
 

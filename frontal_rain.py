@@ -31,29 +31,21 @@ def run_frontal_rain_checks(df, row, thresholds, weights):
     # Initialize all checks as False
     results.update(
         {
-            "F_Gust_Check": False,
             "F_Temperature_Check": False,
             "F_Humidity_Check": False,
             "F_WindDir_Check": False,
             "F_Pressure_Check": False,
+            "F_Rain_Check": False,  # New Rain Check
         }
     )
 
-    # Calculate the averages before and after the event for Gust and Temperature
-    before_gust_avg = calculate_average_in_window(df, timestamp, "before", param="Gust")
-    after_gust_avg = calculate_average_in_window(df, timestamp, "after", param="Gust")
-
+    # Calculate the averages before and after the event for Temperature
     before_temp_avg = calculate_average_in_window(
         df, timestamp, "before", param="Temperature"
     )
     after_temp_avg = calculate_average_in_window(
         df, timestamp, "after", param="Temperature"
     )
-
-    # Wind Gust Decrease: Compare the average one hour before the event with one hour after the event
-    gust_diff = before_gust_avg - after_gust_avg
-    if gust_diff >= thresholds["Gust"]:
-        results["F_Gust_Check"] = True
 
     # Temperature Decrease: Check if there is any decrease in temperature
     temp_diff = before_temp_avg - after_temp_avg
@@ -94,17 +86,33 @@ def run_frontal_rain_checks(df, row, thresholds, weights):
         if six_hours_row["Pressure"] > row["Pressure"]:
             results["F_Pressure_Check"] = True
 
+    # New Rain Check: Check for rainfall 5 minutes before and after the event
+    prev_5min = timestamp - pd.Timedelta(minutes=5)
+    next_5min = timestamp + pd.Timedelta(minutes=5)
+
+    # Get the previous and next rows if available
+    prev_rain_row = df[df["DateT"] == prev_5min]
+    next_rain_row = df[df["DateT"] == next_5min]
+
+    if not prev_rain_row.empty and not next_rain_row.empty:
+        prev_rain = prev_rain_row.iloc[0]["Rain"]
+        next_rain = next_rain_row.iloc[0]["Rain"]
+
+        # Check if rain in either interval is greater than 1mm
+        if prev_rain > 0 and next_rain > 0:
+            results["F_Rain_Check"] = True
+
     # Calculate the weighted score based on the weights provided
     weighted_score = (
-        int(results["F_Gust_Check"]) * weights["Gust"]
-        + int(results["F_Temperature_Check"]) * weights["Temperature"]
+        int(results["F_Temperature_Check"]) * weights["Temperature"]
         + int(results["F_Humidity_Check"]) * weights["Humidity"]
         + int(results["F_WindDir_Check"]) * weights["WindDir"]
         + int(results["F_Pressure_Check"]) * weights["Pressure"]
+        + int(results["F_Rain_Check"]) * weights["Rain"]  # New Rain check score
     )
 
     # Determine if it meets frontal rain criteria based on the weighted score
-    results["FrontalRain"] = weighted_score >= 3  # You can adjust this threshold
+    results["FrontalRain"] = weighted_score >= 4  # You can adjust this threshold
 
     return results
 

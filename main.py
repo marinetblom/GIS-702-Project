@@ -110,7 +110,7 @@ print(
 thresholds = {
     "Humidity": 10,  # % increase
     "Temperature": 2,  # °C decrease
-    "Speed": 5,  # m/s increase
+    "Speed": 2,  # m/s increase
     "WindDir": 30,  # degrees change
     "Pressure": 1,  # hPa increase
     "Gust": 5,  # m/s increase
@@ -121,9 +121,10 @@ storm_weights = {
     "Humidity": 1,
     "Temperature": 1,
     "Speed": 1,
-    "WindDir": 1,  #
-    "Pressure": 1,  # Lower weight for pressure in storm detection
-    "Gust": 2,  # Higher weight for gusts in storm detection
+    "WindDir": 1,
+    "Pressure": 1,
+    "Gust": 2,
+    "Rain": 1,
 }
 
 # 1. Apply the storm checks to the **annual_max_rainfall** dataset
@@ -175,7 +176,6 @@ frontal_rain_thresholds = {
     "Temperature": 1,  # °C decrease
     "WindDir": 30,  # degrees change
     "Pressure": 1,  # Any positive hPa increase
-    "Gust": 3,  # m/s decrease
 }
 
 # Define weights for frontal rain checks
@@ -183,8 +183,8 @@ frontal_rain_weights = {
     "Humidity": 1,
     "Temperature": 1,
     "WindDir": 1,
-    "Pressure": 2,  # Higher weight for pressure in frontal rain detection
-    "Gust": 1,  # Lower weight for gusts in frontal rain detection
+    "Pressure": 1,  # Higher weight for pressure in frontal rain detection
+    "Rain": 1,
 }
 
 # 1. Apply the frontal rain check
